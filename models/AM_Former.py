@@ -294,7 +294,7 @@ class FTTransformer(nn.Module):
         num_cont = 104,
         num_cate = 16,
         use_sigmoid = True,
-        # args,
+        **params,
     ):
         super().__init__()
 
@@ -321,6 +321,7 @@ class FTTransformer(nn.Module):
         use_sigmoid: wether use sigmoid if out == 1
         '''
 
+        self.model_name = "AM_Former"
 
         total_tokens = num_unique_categories + num_special_tokens + 1
         if num_unique_categories > 0:

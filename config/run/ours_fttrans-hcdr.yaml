@@ -3,21 +3,33 @@ __base__:
   - config/models/ours_fttrans_final.yaml
   - config/datasets/hcdr.yaml
 
-exp_name: TEST #ft-trans
-gpu_id: 7
+exp_name: LeXue #ft-trans
+gpu_id: 2
 use_prod: True
 token_descent: False
 max_iter: 10000
-lr: 0.001
+#lr: 0.001
+lr: 0.00055
 stepvalues: [4000]
 
 
 train_size: 1
+warmup_steps: 100
+max_iter: 200
 
 
+num_cate: 0
+num_cont: 23
+out: 3
+categories: []
+sum_num_per_group: [12, 12, 12] #[16, 16, 16]
 prod_num_per_group: [4, 4, 4] #[8, 8, 8]
-groups: [120, 120, 120] #[136, 136, 136]
+groups: [60, 60, 60] #[136, 136, 136]
 # num_per_group: [32, 16, 8]
-sum_num_per_group: [32, 32, 32]
 qk_relu: False
 exp_param: [train_size]
+val_freq: 10
+depth: 3
+#attn_dropout: 0.3
+#ff_dropout: 0.3
+#dim: 192

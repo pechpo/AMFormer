@@ -29,13 +29,13 @@ class MyDataset(data_utils.Dataset):
         if args.model_name == 'node':
             file = '/home/ceyu.cy2/datasets/tabular/Credit/application_train_node.h5'
         else:
-            file = '/home/ceyu.cy2/datasets/tabular/Credit/application_train.h5'
+            file = '/DATA_EDS2/EAI/ALOHA/tmp/AMFormer/lexue_data.hdf5'
         # else:
         #     file = '/home/ceyu.cy/datasets/tabular/Credit/application_test.h5'
 
         data_h5 = h5py.File(file, 'r')
         data = data_h5['my_dataset'][:]
-        text_col_num = 16 #data_h5['text_column_num'].astype(int)[0]
+        text_col_num = 0 #data_h5['text_column_num'].astype(int)[0]
         labels = data_h5['label'].astype(int)[:]
 
         mean = np.array(data[:,text_col_num:].mean(axis=0))

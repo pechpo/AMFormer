@@ -3,10 +3,10 @@ import torch
 import models
 from tensorboardX import SummaryWriter
 from config.cfg import arg2str
-from torchmetrics import Accuracy, AUROC, MeanSquaredError
+from torchmetrics import Accuracy, AUROC, F1Score, MeanSquaredError
 from torch.cuda.amp import autocast, GradScaler
 
-
+import matplotlib.pyplot as plt
 
 
 
@@ -24,26 +24,26 @@ class DefaultTrainer(object):
 
 
         # self.model = getattr(models, args.model_name.lower())(args)
-        self.model = models.amformer(dim = 192,
-                                depth = 3,
-                                heads = 8,
-                                attn_dropout = 0.2,
-                                ff_dropout = 0.1,
-                                use_cls_token = True,
-                                groups = [120, 120, 120],
-                                sum_num_per_group = [32, 32, 32],
-                                prod_num_per_group = [6, 6, 6],
-                                cluster = True,
-                                target_mode = 'mix',
-                                token_descent = False, #True,
-                                use_prod = True,
-                                num_special_tokens = 2,
-                                num_unique_categories = 10000,
-                                out = 2,
-                                num_cont = 104,
-                                num_cate = 16,
-                                use_sigmoid = True,)
-
+        #self.model = models.amformer(dim = 192,
+                                #depth = 3,
+                                #heads = 8,
+                                #attn_dropout = 0.2,
+                                #ff_dropout = 0.1,
+                                #use_cls_token = True,
+                                #groups = [120, 120, 120],
+                                #sum_num_per_group = [32, 32, 32],
+                                #prod_num_per_group = [6, 6, 6],
+                                #cluster = True,
+                                #target_mode = 'mix',
+                                #token_descent = False, #True,
+                                #use_prod = True,
+                                #num_special_tokens = 2,
+                                #num_unique_categories = 10000,
+                                #out = 2,
+                                #num_cont = 104,
+                                #num_cate = 16,
+                                #use_sigmoid = True,)
+        self.model = models.amformer(**vars(args))
 
 
 
@@ -64,6 +64,7 @@ class DefaultTrainer(object):
             'auc':['high', 0],
             'loss':['low', 1000],
             'mse':['low', 1000],
+            'F1':['high', 0]
         }
         self.start = 0
         self.wrong = None
@@ -112,27 +113,33 @@ class DefaultTrainer(object):
         return grad
         
 
-
     def train(self, train_dataloader, valid_dataloader=None):
         self.init_writer()
 
         train_epoch_size = len(train_dataloader)
         train_iter = iter(train_dataloader)
         val_epoch_size = len(valid_dataloader)
-
         
         self.val_freq = train_epoch_size if self.args.val_freq == -1 else self.args.val_freq
+
+        # 初始化准确率列表
+        train_accuracies = []
+        val_accuracies = []
+        train_F1s = []
+        val_F1s = []
+        val_steps = []
+
         for step in range(self.start_iter, self.max_iter):
-            
-            # step = step if self.args.direct_val == False else 500
-            # if self.args.direct_val == False:
             if step % train_epoch_size == 0:
-                print('Epoch: {} ----- step:{} - train_epoch size:{}'.format(step // train_epoch_size, step,
-                                                                            train_epoch_size))
+                print('Epoch: {} ----- step:{} - train_epoch size:{}'.format(step // train_epoch_size, step, train_epoch_size))
                 train_iter = iter(train_dataloader)
 
             self._adjust_learning_rate_iter(step)
-            self.train_iter(step, train_iter)
+            
+            # 执行一个训练步骤并保存训练准确率
+            train_accuracy, train_F1 = self.train_iter(step, train_iter)
+            train_accuracies.append(train_accuracy.detach().cpu())
+            train_F1s.append(train_F1.detach().cpu())
 
             if (valid_dataloader is not None) and \
                 (step % self.val_freq == 0 or step == self.args.max_iter - 1) and \
@@ -141,7 +148,39 @@ class DefaultTrainer(object):
                 val_iter = iter(valid_dataloader)
                 metric_dict = self.validation(step, val_iter, val_epoch_size)
                 
+                # 保存验证准确率
+                val_accuracy = metric_dict.get('acc', None)
+                val_F1 = metric_dict.get('F1', None)
+                if val_accuracy is not None:
+                    val_accuracies.append(val_accuracy.detach().cpu())
+                    val_F1s.append(val_F1.detach().cpu())
+                    val_steps.append(step)
+
                 self.save_best(metric_dict, step)
+        
+        # 训练结束后绘制准确率曲线
+        self.plot_accuracies(train_accuracies, train_F1s, val_accuracies, val_F1s, val_steps)
+
+    def plot_accuracies(self, train_accuracies, train_F1s, val_accuracies, val_F1s, val_steps):
+        #plt.figure()
+        #plt.plot(train_accuracies, label='Train Accuracy')
+        #if val_accuracies:
+            #plt.plot(val_steps, val_accuracies, label='Validation Accuracy', marker='.')
+        #plt.xlabel('Iteration')
+        #plt.ylabel('Accuracy')
+        #plt.title('Training and Validation Accuracy')
+        #plt.legend()
+        #plt.savefig("res_acc.png", dpi=300)
+
+        plt.figure()
+        plt.plot(train_accuracies, label='Train F1 Score')
+        if val_accuracies:
+            plt.plot(val_steps, val_accuracies, label='Validation F1 Score', marker='.')
+        plt.xlabel('Iteration')
+        plt.ylabel('F1 Score')
+        plt.title('Training and Validation F1 Score')
+        plt.legend()
+        plt.savefig("res_f1.png", dpi=300)
 
 
     def save_best(self, metric_dict, step):
@@ -216,6 +255,7 @@ class DefaultTrainer(object):
 
         if self.args.save_metric != 'mse':
             acc = Accuracy(task="multiclass", num_classes=self.args.out, top_k=1).cuda()(pred, label)
+            F1 = F1Score(task="multiclass", num_classes=self.args.out, top_k=1).cuda()(pred, label)
             auc = AUROC(task="multiclass", num_classes=self.args.out).cuda()(pred, label)
         else:
             acc = auc = 0
@@ -225,6 +265,7 @@ class DefaultTrainer(object):
             scalars = [loss.item(), acc, auc, self.lr_current]
             names = ['loss', 'acc', 'AUC', 'lr']
             write_scalars(self.writer, scalars, names, step, 'train')
+        return acc, F1
 
 
     def test(self, test_dataloader):
@@ -310,6 +351,7 @@ class DefaultTrainer(object):
 
         if self.args.save_metric != 'mse':
             acc = Accuracy(task="multiclass", num_classes=self.args.out, top_k=1).cuda()(total_pred, total_label)
+            F1 = F1Score(task="multiclass", num_classes=self.args.out, top_k=1).cuda()(pred, label)
             auc = AUROC(task="multiclass", num_classes=self.args.out).cuda()(total_pred, total_label)
             mse = acc
         else:
@@ -335,7 +377,7 @@ class DefaultTrainer(object):
 
         write_scalars(self.writer, scalars, names, step, dataset)
 
-        return {'loss': loss, 'acc': acc, 'auc': auc, 'mse':mse}
+        return {'loss': loss, 'acc': acc, 'auc': auc, 'mse':mse, 'F1':F1}
 
     def _adjust_learning_rate_iter(self, step):
         """Sets the learning rate to the initial LR decayed by 10 at every specified step
@@ -370,7 +412,7 @@ class DefaultTrainer(object):
     def delete_model(self, best, index):
         if index == 0 or index == 1000000:
             return
-        save_fname = '%s_%s_%s.pth' % (self.model.model_name(), best, index)
+        save_fname = '%s_%s_%s.pth' % (self.model.model_name, best, index)
         save_path = os.path.join(self.args.save_folder, self.args.exp_name, save_fname)
         if os.path.exists(save_path):
             os.remove(save_path)
@@ -383,9 +425,9 @@ class DefaultTrainer(object):
 
         if gpus == 1:
             if isinstance(index, list):
-                save_fname = '%s_%s_%s_%s.pth' % (self.model.model_name(), best, index[0], index[1])
+                save_fname = '%s_%s_%s_%s.pth' % (self.model.model_name, best, index[0], index[1])
             else:
-                save_fname = '%s_%s_%s.pth' % (self.model.model_name(), best, index)
+                save_fname = '%s_%s_%s.pth' % (self.model.model_name, best, index)
             save_path = os.path.join(self.args.save_folder, self.args.exp_name, save_fname)
             save_dict = {
                 'net_state_dict': self.model.state_dict(),
@@ -395,7 +437,7 @@ class DefaultTrainer(object):
                 'optim':self.optim
             }
         else:
-            save_fname = '%s_%s_%s.pth' % (self.model.module.model_name(), best, index)
+            save_fname = '%s_%s_%s.pth' % (self.model.module.model_name, best, index)
             save_path = os.path.join(self.args.save_folder, self.args.exp_name, save_fname)
             save_dict = {
                 'net_state_dict': self.model.module.state_dict(),

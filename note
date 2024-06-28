@@ -1,0 +1,4 @@
+data的前num_cate个是类别维度，之后的是数值维度
+在data_hcdr.py中做了数据来源h5文件的读取
+注意要为了自己的数据，改一下这个文件里的text_col_num，也就是类别维度的个数
+同时还要改yaml中的num_cate和categories（定义类别维度中有几个类）
