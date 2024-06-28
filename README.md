@@ -1,3 +1,5 @@
+在AMFormer原仓库的基础上对北理工《机器学习实践》大作业中的乐学数据进行了预测
+
 # AMFormer
 The AMFormer algorithm, accepted at AAAI-2024, for deep tabular learning
 
